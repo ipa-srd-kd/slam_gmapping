@@ -32,103 +32,102 @@
 
 class SlamGMapping
 {
-  public:
-    SlamGMapping();
-    SlamGMapping(unsigned long int seed, unsigned long int max_duration_buffer);
-    ~SlamGMapping();
+public:
+  SlamGMapping();
+  SlamGMapping(unsigned long int seed, unsigned long int max_duration_buffer);
+  ~SlamGMapping();
 
-    void init();
-    void startLiveSlam();
-    void startReplay(const std::string & bag_fname, std::string scan_topic);
-    void publishTransform();
-  
-    void laserCallback(const sensor_msgs::LaserScan::ConstPtr& scan);
-    bool mapCallback(nav_msgs::GetMap::Request  &req,
-                     nav_msgs::GetMap::Response &res);
-    void publishLoop(double transform_publish_period);
+  void init();
+  void startLiveSlam();
+  void startReplay(const std::string & bag_fname, std::string scan_topic);
+  void publishTransform();
 
-  private:
-    ros::NodeHandle node_;
-    ros::Publisher entropy_publisher_;
-    ros::Publisher sst_;
-    ros::Publisher sstm_;
-    ros::ServiceServer ss_;
-    tf::TransformListener tf_;
-    message_filters::Subscriber<sensor_msgs::LaserScan>* scan_filter_sub_;
-    tf::MessageFilter<sensor_msgs::LaserScan>* scan_filter_;
-    tf::TransformBroadcaster* tfB_;
+  void laserCallback(const sensor_msgs::LaserScan::ConstPtr& scan);
+  bool mapCallback(nav_msgs::GetMap::Request &req, nav_msgs::GetMap::Response &res);
+  void publishLoop(double transform_publish_period);
 
-    GMapping::GridSlamProcessor* gsp_;
-    GMapping::RangeSensor* gsp_laser_;
-    double gsp_laser_angle_increment_;
-    double angle_min_;
-    double angle_max_;
-    unsigned int gsp_laser_beam_count_;
-    GMapping::OdometrySensor* gsp_odom_;
+private:
+  ros::NodeHandle node_;
+  ros::Publisher entropy_publisher_;
+  ros::Publisher sst_;
+  ros::Publisher sstm_;
+  ros::ServiceServer ss_;
+  tf::TransformListener tf_;
+  message_filters::Subscriber<sensor_msgs::LaserScan>* scan_filter_sub_;
+  tf::MessageFilter<sensor_msgs::LaserScan>* scan_filter_;
+  tf::TransformBroadcaster* tfB_;
 
-    bool got_first_scan_;
+  GMapping::GridSlamProcessor* gsp_;
+  GMapping::RangeSensor* gsp_laser_;
+  double gsp_laser_angle_increment_;
+  double angle_min_;
+  double angle_max_;
+  unsigned int gsp_laser_beam_count_;
+  GMapping::OdometrySensor* gsp_odom_;
 
-    bool got_map_;
-    nav_msgs::GetMap::Response map_;
+  bool got_first_scan_;
 
-    ros::Duration map_update_interval_;
-    tf::Transform map_to_odom_;
-    boost::mutex map_to_odom_mutex_;
-    boost::mutex map_mutex_;
+  bool got_map_;
+  nav_msgs::GetMap::Response map_;
 
-    int laser_count_;
-    int throttle_scans_;
+  ros::Duration map_update_interval_;
+  tf::Transform map_to_odom_;
+  boost::mutex map_to_odom_mutex_;
+  boost::mutex map_mutex_;
 
-    boost::thread* transform_thread_;
+  int laser_count_;
+  int throttle_scans_;
 
-    std::string base_frame_;
-    std::string laser_frame_;
-    std::string map_frame_;
-    std::string odom_frame_;
+  boost::thread* transform_thread_;
 
-    void updateMap(const sensor_msgs::LaserScan& scan);
-    bool getOdomPose(GMapping::OrientedPoint& gmap_pose, const ros::Time& t);
-    bool initMapper(const sensor_msgs::LaserScan& scan);
-    bool addScan(const sensor_msgs::LaserScan& scan, GMapping::OrientedPoint& gmap_pose);
-    double computePoseEntropy();
-    
-    // Parameters used by GMapping
-    double maxRange_;
-    double maxUrange_;
-    double maxrange_;
-    double minimum_score_;
-    double sigma_;
-    int kernelSize_;
-    double lstep_;
-    double astep_;
-    int iterations_;
-    double lsigma_;
-    double ogain_;
-    int lskip_;
-    double srr_;
-    double srt_;
-    double str_;
-    double stt_;
-    double linearUpdate_;
-    double angularUpdate_;
-    double temporalUpdate_;
-    double resampleThreshold_;
-    int particles_;
-    double xmin_;
-    double ymin_;
-    double xmax_;
-    double ymax_;
-    double delta_;
-    double occ_thresh_;
-    double llsamplerange_;
-    double llsamplestep_;
-    double lasamplerange_;
-    double lasamplestep_;
-    
-    ros::NodeHandle private_nh_;
-    
-    unsigned long int seed_;
-    
-    double transform_publish_period_;
-    double tf_delay_;
+  std::string base_frame_;
+  std::string laser_frame_;
+  std::string map_frame_;
+  std::string odom_frame_;
+
+  void updateMap(const sensor_msgs::LaserScan& scan);
+  bool getOdomPose(GMapping::OrientedPoint& gmap_pose, const ros::Time& t);
+  bool initMapper(const sensor_msgs::LaserScan& scan);
+  bool addScan(const sensor_msgs::LaserScan& scan, GMapping::OrientedPoint& gmap_pose);
+  double computePoseEntropy();
+
+  // Parameters used by GMapping
+  double maxRange_;
+  double maxUrange_;
+  double maxrange_;
+  double minimum_score_;
+  double sigma_;
+  int kernelSize_;
+  double lstep_;
+  double astep_;
+  int iterations_;
+  double lsigma_;
+  double ogain_;
+  int lskip_;
+  double srr_;
+  double srt_;
+  double str_;
+  double stt_;
+  double linearUpdate_;
+  double angularUpdate_;
+  double temporalUpdate_;
+  double resampleThreshold_;
+  int particles_;
+  double xmin_;
+  double ymin_;
+  double xmax_;
+  double ymax_;
+  double delta_;
+  double occ_thresh_;
+  double llsamplerange_;
+  double llsamplestep_;
+  double lasamplerange_;
+  double lasamplestep_;
+
+  ros::NodeHandle private_nh_;
+
+  unsigned long int seed_;
+
+  double transform_publish_period_;
+  double tf_delay_;
 };

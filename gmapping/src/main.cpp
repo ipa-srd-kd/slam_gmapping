@@ -20,8 +20,7 @@
 
 #include "slam_gmapping.h"
 
-int
-main(int argc, char** argv)
+int main(int argc, char** argv)
 {
   ros::init(argc, argv, "slam_gmapping");
 
@@ -29,6 +28,6 @@ main(int argc, char** argv)
   gn.startLiveSlam();
   ros::spin();
 
-  return(0);
+  return (0);
 }
 
