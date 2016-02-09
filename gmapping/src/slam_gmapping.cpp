@@ -6,7 +6,7 @@
  * COMMONS PUBLIC LICENSE ("CCPL" OR "LICENSE"). THE WORK IS PROTECTED BY
  * COPYRIGHT AND/OR OTHER APPLICABLE LAW. ANY USE OF THE WORK OTHER THAN AS
  * AUTHORIZED UNDER THIS LICENSE OR COPYRIGHT LAW IS PROHIBITED.
- * 
+ *
  * BY EXERCISING ANY RIGHTS TO THE WORK PROVIDED HERE, YOU ACCEPT AND AGREE TO
  * BE BOUND BY THE TERMS OF THIS LICENSE. THE LICENSOR GRANTS YOU THE RIGHTS
  * CONTAINED HERE IN CONSIDERATION OF YOUR ACCEPTANCE OF SUCH TERMS AND
@@ -35,7 +35,7 @@ written to a file using e.g.
 @section topic ROS topics
 
 Subscribes to (name/type):
-- @b "scan"/<a href="../../sensor_msgs/html/classstd__msgs_1_1LaserScan.html">sensor_msgs/LaserScan</a> : data from a laser range scanner 
+- @b "scan"/<a href="../../sensor_msgs/html/classstd__msgs_1_1LaserScan.html">sensor_msgs/LaserScan</a> : data from a laser range scanner
 - @b "/tf": odometry from the robot
 
 
@@ -160,9 +160,9 @@ void SlamGMapping::init()
 
   got_first_scan_ = false;
   got_map_ = false;
-  
 
-  
+
+
   // Parameters used by our GMapping wrapper
   if(!private_nh_.getParam("throttle_scans", throttle_scans_))
     throttle_scans_ = 1;
@@ -179,7 +179,7 @@ void SlamGMapping::init()
   if(!private_nh_.getParam("map_update_interval", tmp))
     tmp = 5.0;
   map_update_interval_.fromSec(tmp);
-  
+
   // Parameters used by GMapping itself
   maxUrange_ = 0.0;  maxRange_ = 0.0; // preliminary default, will be set in initMapper()
   if(!private_nh_.getParam("minimumScore", minimum_score_))
@@ -238,7 +238,7 @@ void SlamGMapping::init()
     lasamplerange_ = 0.005;
   if(!private_nh_.getParam("lasamplestep", lasamplestep_))
     lasamplestep_ = 0.005;
-    
+
   if(!private_nh_.getParam("tf_delay", tf_delay_))
     tf_delay_ = transform_publish_period_;
 
@@ -266,10 +266,10 @@ void SlamGMapping::startReplay(const std::string & bag_fname, std::string scan_t
   sst_ = node_.advertise<nav_msgs::OccupancyGrid>("map", 1, true);
   sstm_ = node_.advertise<nav_msgs::MapMetaData>("map_metadata", 1, true);
   ss_ = node_.advertiseService("dynamic_map", &SlamGMapping::mapCallback, this);
-  
+
   rosbag::Bag bag;
   bag.open(bag_fname, rosbag::bagmode::Read);
-  
+
   std::vector<std::string> topics;
   topics.push_back(std::string("/tf"));
   topics.push_back(scan_topic);
@@ -302,7 +302,7 @@ void SlamGMapping::startReplay(const std::string & bag_fname, std::string scan_t
         ROS_WARN_STREAM("Dropping old scan: " << s_queue.front().second);
         s_queue.pop();
       }
-      // ignoring un-timestamped tf data 
+      // ignoring un-timestamped tf data
     }
 
     // Only process a scan if it has tf data
@@ -362,10 +362,13 @@ SlamGMapping::getOdomPose(GMapping::OrientedPoint& gmap_pose, const ros::Time& t
 {
   // Get the pose of the centered laser at the right time
   centered_laser_pose_.stamp_ = t;
-  // Get the laser's pose that is centered
+  /* Get the laser's pose that is centered
+   * move the centered_laser_pose_ to the current position according to the odom_frame_
+   */
   tf::Stamped<tf::Transform> odom_pose;
   try
   {
+    // get the postion of the laser scan in the odometry frame at time t
     tf_.transformPose(odom_frame_, centered_laser_pose_, odom_pose);
   }
   catch(tf::TransformException e)
@@ -373,6 +376,7 @@ SlamGMapping::getOdomPose(GMapping::OrientedPoint& gmap_pose, const ros::Time& t
     ROS_WARN("Failed to compute odom pose, skipping scan (%s)", e.what());
     return false;
   }
+  // get the current
   double yaw = tf::getYaw(odom_pose.getRotation());
 
   gmap_pose = GMapping::OrientedPoint(odom_pose.getOrigin().x(),
@@ -385,7 +389,17 @@ bool
 SlamGMapping::initMapper(const sensor_msgs::LaserScan& scan)
 {
   laser_frame_ = scan.header.frame_id;
-  // Get the laser's pose, relative to base.
+  /* Get the laser's pose, relative to base.
+   * - initialize a pose with (0,0,0) and id and stamp from scan
+   *   (ident = identiy pose,  laser_pose = offset from base_frame)
+   * - get the tf transformation from the base_frame to laser via name
+   * - lookup gets frame difference, transformPose moves the identity
+   *   pose
+   * - intern it will be multiplied by the idents values. That's why
+   *   they have to be initialized with the identity matrix and
+   *   zero vector
+   *
+   */
   tf::Stamped<tf::Pose> ident;
   tf::Stamped<tf::Transform> laser_pose;
   ident.setIdentity();
@@ -393,6 +407,11 @@ SlamGMapping::initMapper(const sensor_msgs::LaserScan& scan)
   ident.stamp_ = scan.header.stamp;
   try
   {
+    /* get the Pose of the laser_frame origin in the base_frame
+     *
+     * internally using the transformation vector of
+     * lookupTransform(base_frame, laser_frame)
+     */
     tf_.transformPose(base_frame_, ident, laser_pose);
   }
   catch(tf::TransformException e)
@@ -402,7 +421,14 @@ SlamGMapping::initMapper(const sensor_msgs::LaserScan& scan)
     return false;
   }
 
-  // create a point 1m above the laser position and transform it into the laser-frame
+  /* create a point 1m above the laser position and transform it into the laser-frame
+   *
+   *  when the point is 1m above the laser scan the resulting transform must return either
+   *  1 oder -1, depending on the orientation of the laser scanner
+   *
+   *  positive or negative  , depending on the orientation of z
+   *  not equal 1           , when the scanner is rolled or pitched
+   */
   tf::Vector3 v;
   v.setValue(0, 0, 1 + laser_pose.getOrigin().z());
   tf::Stamped<tf::Vector3> up(v, scan.header.stamp,
@@ -418,37 +444,58 @@ SlamGMapping::initMapper(const sensor_msgs::LaserScan& scan)
              e.what());
     return false;
   }
-  
-  // gmapping doesnt take roll or pitch into account. So check for correct sensor alignment.
+
+  /* gmapping doesnt take roll or pitch into account. So check for correct sensor alignment.
+   *
+   * @note how does rolling or pitching influence the z value? Is z in-/decreasing depending on it?
+   * shouldn't the distance to the origin stay the same?
+   */
   if (fabs(fabs(up.z()) - 1) > 0.001)
   {
     ROS_WARN("Laser has to be mounted planar! Z-coordinate has to be 1 or -1, but gave: %.5f",
                  up.z());
     return false;
   }
-
+  // how many beams
   gsp_laser_beam_count_ = scan.ranges.size();
-
+  // center of the available scan
   double angle_center = (scan.angle_min + scan.angle_max)/2;
 
+  /* if the camera is mounted upside down, the z-Axes will initially face downwards
+   *
+   * @note why compute boolean in conditions as well? required later as well?
+   * @note assumes that the laser sensor must be higher than the base
+   */
   if (up.z() > 0)
   {
-    do_reverse_range_ = scan.angle_min > scan.angle_max;
+    do_reverse_range_ = scan.angle_min > scan.angle_max; // true or false: save for later?
+    //   turn frame around the z axle by angle_center to align the center of the scan with with x axle
     centered_laser_pose_ = tf::Stamped<tf::Pose>(tf::Transform(tf::createQuaternionFromRPY(0,0,angle_center),
-                                                               tf::Vector3(0,0,0)), ros::Time::now(), laser_frame_);
+                                                 tf::Vector3(0,0,0)),
+                                                 ros::Time::now(),
+                                                 laser_frame_);
     ROS_INFO("Laser is mounted upwards.");
   }
   else
   {
-    do_reverse_range_ = scan.angle_min < scan.angle_max;
-    centered_laser_pose_ = tf::Stamped<tf::Pose>(tf::Transform(tf::createQuaternionFromRPY(M_PI,0,-angle_center),
-                                                               tf::Vector3(0,0,0)), ros::Time::now(), laser_frame_);
+    do_reverse_range_ = scan.angle_min < scan.angle_max; // true or false: save for later?
+    //   turn frame around the x axle by 180° and around the z axle by angle_center to align the center of
+    //   the scan with with x axle
+    //   basically reverse the upside down orientation
+    centered_laser_pose_ = tf::Stamped<tf::Pose>(tf::Transform(tf::createQuaternionFromRPY(M_PI, 0, -angle_center),
+                                                 tf::Vector3(0,0,0)),
+                                                 ros::Time::now(),
+                                                 laser_frame_);
     ROS_INFO("Laser is mounted upside down.");
   }
 
   // Compute the angles of the laser from -x to x, basically symmetric and in increasing order
-  laser_angles_.resize(scan.ranges.size());
-  // Make sure angles are started so that they are centered
+  laser_angles_.resize(scan.ranges.size()); // make sure we don't get a seg fault in the for loop
+  /* @var theta: start angle for the centralized scan
+   * compute the angle of coverage of the laser scanner
+   * half of that angle is right from the center (negative range), the other half is on the other side
+   * starting in the negative range and incrementing till we reach the end in the positive range
+   */
   double theta = - std::fabs(scan.angle_min - scan.angle_max)/2;
   for(unsigned int i=0; i<scan.ranges.size(); ++i)
   {
@@ -470,11 +517,12 @@ SlamGMapping::initMapper(const sensor_msgs::LaserScan& scan)
   if(!private_nh_.getParam("maxUrange", maxUrange_))
     maxUrange_ = maxRange_;
 
-  // The laser must be called "FLASER".
-  // We pass in the absolute value of the computed angle increment, on the
-  // assumption that GMapping requires a positive angle increment.  If the
-  // actual increment is negative, we'll swap the order of ranges before
-  // feeding each scan to GMapping.
+  /* The laser must be called "FLASER".
+   * We pass in the absolute value of the computed angle increment, on the
+   * assumption that GMapping requires a positive angle increment.  If the
+   * actual increment is negative, we'll swap the order of ranges before
+   * feeding each scan to GMapping.
+   */
   gsp_laser_ = new GMapping::RangeSensor("FLASER",
                                          gsp_laser_beam_count_,
                                          fabs(scan.angle_increment),
@@ -531,7 +579,7 @@ SlamGMapping::addScan(const sensor_msgs::LaserScan& scan, GMapping::OrientedPoin
 {
   if(!getOdomPose(gmap_pose, scan.header.stamp))
      return false;
-  
+
   if(scan.ranges.size() != gsp_laser_beam_count_)
     return false;
 
@@ -550,7 +598,7 @@ SlamGMapping::addScan(const sensor_msgs::LaserScan& scan, GMapping::OrientedPoin
       else
         ranges_double[i] = (double)scan.ranges[num_ranges - i - 1];
     }
-  } else 
+  } else
   {
     for(unsigned int i=0; i < scan.ranges.size(); i++)
     {
@@ -573,7 +621,7 @@ SlamGMapping::addScan(const sensor_msgs::LaserScan& scan, GMapping::OrientedPoin
 
   reading.setPose(gmap_pose);
 
-  /*
+  /*doxygen console
   ROS_DEBUG("scanpose (%.3f): %.3f %.3f %.3f\n",
             scan.header.stamp.toSec(),
             gmap_pose.x,
@@ -681,13 +729,13 @@ SlamGMapping::updateMap(const sensor_msgs::LaserScan& scan)
     map_.map.info.origin.orientation.y = 0.0;
     map_.map.info.origin.orientation.z = 0.0;
     map_.map.info.origin.orientation.w = 1.0;
-  } 
+  }
 
   GMapping::Point center;
   center.x=(xmin_ + xmax_) / 2.0;
   center.y=(ymin_ + ymax_) / 2.0;
 
-  GMapping::ScanMatcherMap smap(center, xmin_, ymin_, xmax_, ymax_, 
+  GMapping::ScanMatcherMap smap(center, xmin_, ymin_, xmax_, ymax_,
                                 delta_);
 
   ROS_DEBUG("Trajectory tree:");
@@ -718,7 +766,7 @@ SlamGMapping::updateMap(const sensor_msgs::LaserScan& scan)
     GMapping::Point wmax = smap.map2world(GMapping::IntPoint(smap.getMapSizeX(), smap.getMapSizeY()));
     xmin_ = wmin.x; ymin_ = wmin.y;
     xmax_ = wmax.x; ymax_ = wmax.y;
-    
+
     ROS_DEBUG("map size is now %dx%d pixels (%f,%f)-(%f, %f)", smap.getMapSizeX(), smap.getMapSizeY(),
               xmin_, ymin_, xmax_, ymax_);
 
@@ -760,7 +808,7 @@ SlamGMapping::updateMap(const sensor_msgs::LaserScan& scan)
   sstm_.publish(map_.map.info);
 }
 
-bool 
+bool
 SlamGMapping::mapCallback(nav_msgs::GetMap::Request  &req,
                           nav_msgs::GetMap::Response &res)
 {
